@@ -176,7 +176,7 @@ def parse_pdf(blob: bytes, kind: str, source_url: str, year: int) -> list[Schedu
     return results
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_resource(ttl=1800, show_spinner=False)
 def load_schedules() -> tuple[list[Schedule], dict[str, tuple[str, str, int]]]:
     links = latest_links()
     rows: list[Schedule] = []
