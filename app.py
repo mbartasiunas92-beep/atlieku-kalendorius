@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from html.parser import HTMLParser
 from io import BytesIO
 import hashlib
@@ -223,6 +223,24 @@ def make_calendar(events: list[tuple[date, Schedule]]) -> bytes:
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         "X-WR-CALNAME:Atliekų išvežimai",
+        "BEGIN:VTIMEZONE",
+        "TZID:Europe/Vilnius",
+        "X-LIC-LOCATION:Europe/Vilnius",
+        "BEGIN:DAYLIGHT",
+        "TZOFFSETFROM:+0200",
+        "TZOFFSETTO:+0300",
+        "TZNAME:EEST",
+        "DTSTART:20260329T030000",
+        "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU",
+        "END:DAYLIGHT",
+        "BEGIN:STANDARD",
+        "TZOFFSETFROM:+0300",
+        "TZOFFSETTO:+0200",
+        "TZNAME:EET",
+        "DTSTART:20261025T040000",
+        "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU",
+        "END:STANDARD",
+        "END:VTIMEZONE",
     ]
     seen: set[str] = set()
     for event_date, row in events:
@@ -235,10 +253,15 @@ def make_calendar(events: list[tuple[date, Schedule]]) -> bytes:
             "BEGIN:VEVENT",
             f"UID:{uid}",
             f"DTSTAMP:{now}",
-            f"DTSTART;VALUE=DATE:{event_date:%Y%m%d}",
-            f"DTEND;VALUE=DATE:{(event_date + timedelta(days=1)):%Y%m%d}",
+            f"DTSTART;TZID=Europe/Vilnius:{event_date:%Y%m%d}T070000",
+            f"DTEND;TZID=Europe/Vilnius:{event_date:%Y%m%d}T071500",
             f"SUMMARY:{ics_escape(row.kind + ' atliekų išvežimas')}",
             f"DESCRIPTION:{ics_escape('Grafiko grupė: ' + row.location_text)}",
+            "BEGIN:VALARM",
+            "ACTION:DISPLAY",
+            f"DESCRIPTION:{ics_escape(row.kind + ' atliekų išvežimas po 2 dienų')}",
+            "TRIGGER:-P2D",
+            "END:VALARM",
             "BEGIN:VALARM",
             "ACTION:DISPLAY",
             f"DESCRIPTION:{ics_escape(row.kind + ' atliekų išvežimas rytoj')}",
@@ -294,7 +317,7 @@ if query:
                 data=make_calendar(calendar_events),
                 file_name="atlieku-kalendorius.ics",
                 mime="text/calendar",
-                help="Failą atidarykite iPhone telefone ir pridėkite į Kalendorių. Įvykiai turės priminimą dieną prieš.",
+                help="Failą atidarykite iPhone telefone ir pridėkite į Kalendorių. Įvykiai truks 7:00–7:15, priminimai bus likus 2 dienoms ir 1 dienai.",
             )
         if any(upcoming_by_kind.values()):
             st.subheader("Artimiausi išvežimai")
