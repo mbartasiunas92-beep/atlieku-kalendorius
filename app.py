@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from io import BytesIO
+import hashlib
 import re
 import unicodedata
 from urllib.parse import urljoin
@@ -209,6 +210,45 @@ def search_rows(rows: list[Schedule], query: str) -> list[Schedule]:
     ]
 
 
+def ics_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+
+def make_calendar(events: list[tuple[date, Schedule]]) -> bytes:
+    now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Atlieku kalendorius//LT",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Atliekų išvežimai",
+    ]
+    seen: set[str] = set()
+    for event_date, row in events:
+        uid_source = f"{row.kind}|{event_date.isoformat()}|{row.location_text}"
+        uid = hashlib.sha256(uid_source.encode("utf-8")).hexdigest() + "@atlieku-kalendorius"
+        if uid in seen:
+            continue
+        seen.add(uid)
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:{uid}",
+            f"DTSTAMP:{now}",
+            f"DTSTART;VALUE=DATE:{event_date:%Y%m%d}",
+            f"DTEND;VALUE=DATE:{(event_date + timedelta(days=1)):%Y%m%d}",
+            f"SUMMARY:{ics_escape(row.kind + ' atliekų išvežimas')}",
+            f"DESCRIPTION:{ics_escape('Grafiko grupė: ' + row.location_text)}",
+            "BEGIN:VALARM",
+            "ACTION:DISPLAY",
+            f"DESCRIPTION:{ics_escape(row.kind + ' atliekų išvežimas rytoj')}",
+            "TRIGGER:-P1D",
+            "END:VALARM",
+            "END:VEVENT",
+        ])
+    return ("\r\n".join(lines + ["END:VCALENDAR", ""])).encode("utf-8")
+
+
 st.set_page_config(page_title="Atliekų kalendorius", page_icon="♻️", layout="centered")
 st.title("♻️ Atliekų kalendorius")
 st.caption("Vilniaus rajono „Nemenčinės komunalininko“ grafikai pagal jūsų adresą")
@@ -243,6 +283,19 @@ if query:
             )
             for kind in ("Buitinės", "Pakuotės", "Stiklas")
         }
+        calendar_events = [
+            (event, row)
+            for events in upcoming_by_kind.values()
+            for event, row in events
+        ]
+        if calendar_events:
+            st.download_button(
+                "Pridėti išvežimus į iPhone kalendorių (.ics)",
+                data=make_calendar(calendar_events),
+                file_name="atlieku-kalendorius.ics",
+                mime="text/calendar",
+                help="Failą atidarykite iPhone telefone ir pridėkite į Kalendorių. Įvykiai turės priminimą dieną prieš.",
+            )
         if any(upcoming_by_kind.values()):
             st.subheader("Artimiausi išvežimai")
             for kind, events in upcoming_by_kind.items():
